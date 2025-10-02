@@ -310,3 +310,5 @@ def onnx_callback(
         #message = template.format(type(ex).__name__, ex.args)
         print(type(ex))
         print(ex)
+        print("If we ran into an error, the server won't work")
+        queue.put(ex)

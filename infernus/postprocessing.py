@@ -13,7 +13,7 @@ import astropy.units as u
 from astropy.cosmology import FlatwCDM
 import numpy as np
 cosmo = FlatwCDM(H0=67.9, Om0=0.3065, w0=-1)
-from GWSamplegen.noise_utils import combine_seg_list, get_valid_noise_times
+from GWSamplegen.noise_utils import combine_seg_list, get_valid_noise_times, get_valid_noise_times_from_segments
 from GWSamplegen.waveform_utils import t_at_f
 from scipy.optimize import minimize
 from scipy.stats import norm, skewnorm, t
@@ -32,6 +32,58 @@ def logdiffexp(x, y):
 
 def log_dVdz(z):
 	return np.log(4 * np.pi) + np.log(cosmo.differential_comoving_volume(z).to(u.Gpc**3 / u.sr).value)
+
+#TODO:this is the most up to date version of this function, delete the 'mine' one later
+def log_dNdm1dm2ds1ds2dz(
+    m1, m2, s1x, s1y, s1z, s2x, s2y, s2z, z, 
+    logprob_mass, logprob_spin, selection, params, log_dVdz):
+    ''' Calculate dN / dm1 dm2 ds1 ds2 dz for selected injections 
+    
+    Arguments:
+    - m1, m2: primary and secondary spin components
+    - s1x, s1y, s1z: primary spin components
+    - s2x, s2y, s2z: secondary spin components
+    - z: redshift
+    - logprob_mass: function that takes in m1, m2 and calculate log p(m1, m2) 
+    - logprob_spin: function that takes in spin parameters and calculate log p(s)
+    - selection: selection function
+    - params: parameters for distribution func
+    '''
+    
+    log_pm = logprob_mass(m1, m2, params)  # mass distribution p(m1, m2)
+    
+    #TODO: fix spin distributions: not all injections with m1 or m2 > 2 are BHs!!!
+    if params['m1_full_pop'] and params['m2_full_pop']:
+        log_ps = params['s1_s2_prior']
+    else:
+        # primary spin distribution
+        s1_max = np.where(m1 < 2, params['smax_ns'], params['smax_bh'])
+        spin1_params = params.copy()
+        spin1_params['smax'] = s1_max
+        log_ps1 = logprob_spin(s1x, s1y, s1z, spin1_params)
+        
+        # secondary spin distribution
+        s2_max = np.where(m2 < 2, params['smax_ns'], params['smax_bh'])
+        spin2_params = params.copy()
+        spin2_params['smax'] = s2_max
+        log_ps2 = logprob_spin(s2x, s2y, s2z, spin2_params)
+        
+        # total spin distribution
+        log_ps = log_ps1 + log_ps2
+      
+    # Calculate the redshift terms, ignoring rate R0 because it will cancel out anyway
+    # dN / dz = dV / dz  * 1 / (1 + z) + (1 + z)^kappa
+    # where the second term is for time dilation
+    # ignoring the rate because it will cancel out anyway
+    cosmo = params['cosmo']
+    log_dNdV = 0
+    #log_dVdz = np.log(4 * np.pi) + np.log(cosmo.differential_comoving_volume(z).to(
+    #    u.Gpc**3 / u.sr).value)
+    log_time_dilation = - np.log(1 + z)
+
+    log_dNdz = log_dNdV + log_dVdz + log_time_dilation
+    
+    return np.where(selection, log_pm + log_ps + log_dNdz, np.NINF)
 
 
 def log_dNdm1dm2ds1ds2dz_mine(z, logprob_m1m2, logprob_spin, selection, log_dVdz):
@@ -67,22 +119,23 @@ def log_dNdm1dm2ds1ds2dz_mine(z, logprob_m1m2, logprob_spin, selection, log_dVdz
     return np.where(selection, log_pm + log_ps + log_dNdz, np.NINF)
 
 
-def get_V(z, logprob_mass, logprob_spin, selection, N_draw, p_draw, log_dVdz):
+def get_V(m1, m2, s1x, s1y, s1z, s2x, s2y, s2z, z, 
+          logprob_mass, logprob_spin, selection, N_draw, p_draw, params, log_dVdz):
     ''' Convienient function that returns log_V, log_err_V, and N_eff '''
     
     # Calculate V
-    log_dN = log_dNdm1dm2ds1ds2dz_mine(z, logprob_mass, logprob_spin, selection, log_dVdz)
-    log_V = - np.log(N_draw) + np.logaddexp.reduce(log_dN - np.log(p_draw))
+    log_dN = log_dNdm1dm2ds1ds2dz(
+        m1, m2, s1x, s1y, s1z, s2x, s2y, s2z, z, 
+        logprob_mass, logprob_spin, selection, params, log_dVdz)
+    log_V = -np.log(N_draw) + np.logaddexp.reduce(log_dN - np.log(p_draw))
 
-    # Calculate uncertainty of V and effective number 
-    #log_s2 = 2 * np.log(T_obs) - 2 * np.log(N_draw) + np.logaddexp.reduce(
-    #    2 * (log_dN - np.log(p_draw)))
-    log_s2 = - 2 * np.log(N_draw) + np.logaddexp.reduce(
+    # Calculate uncertainty of V and effective number
+    log_s2 = -2 * np.log(N_draw) + np.logaddexp.reduce(
         2 * (log_dN - np.log(p_draw)))
     log_sig2 = logdiffexp(log_s2, 2.0*log_V - np.log(N_draw))
     log_sig = log_sig2 / 2
     N_eff = np.exp(2 * log_V - log_sig2)
-    
+
     return np.exp(log_V), np.exp(log_sig), N_eff
 
 
@@ -240,7 +293,40 @@ def lognorm_fit_constrained(data, upper = 1e-4, lower = 1e-6, method = 'MSE'):
 
     return res.x
 
-def preds_to_far_constrained(bg,preds, upper = 1e-3, lower = 1e-7, extrapolate = True):
+def lognorm_fit_constrained_print(data, upper = 1e-4, lower = 1e-7, method = 'MSE', verbose = True):
+   
+    p, bins = np.histogram(data, bins = np.linspace(np.min(data),np.max(data), 1000), density = True)
+    p = p[::-1].cumsum()[::-1]
+    p/=p[0]
+
+    p_upper = np.argmin(np.abs(p - upper))
+    p_lower = np.argmin(np.abs(p - lower))
+
+    def lognorm_fit_func_c(params):
+        mean, std = params
+        cdf = pdf_to_cdf_arbitrary(norm.pdf(bins[:-1], mean, std))
+
+        return np.mean(np.abs((np.log10(p[p_upper: p_lower]) - np.log10(cdf[p_upper: p_lower]))))
+
+    x0 = np.array([np.mean(data), np.std(data)])
+    
+    res = minimize(lognorm_fit_func_c, x0, method = 'Nelder-Mead')
+    if verbose:
+        print(res)
+
+    mean, std = res.x
+    #get the r squared value
+
+    cdf = pdf_to_cdf_arbitrary(norm.pdf(bins[:-1], mean, std))
+    cdf = cdf[p_upper:p_lower]
+    p = p[p_upper:p_lower]
+    
+    r2 = 1 - np.sum((np.log10(p) - np.log10(cdf))**2)/np.sum((np.log10(p) - np.mean(np.log10(p)))**2)
+    if verbose:
+        print("r-squared value: ", r2)
+    return res.x
+
+def preds_to_far_constrained(bg,preds, upper = 1e-3, lower = 1e-7, extrapolate = True, verbose = True):
 
 	maxval = max(np.max(preds), np.max(bg)) + 10
 	minval = min(np.min(preds), np.min(bg))
@@ -253,7 +339,7 @@ def preds_to_far_constrained(bg,preds, upper = 1e-3, lower = 1e-7, extrapolate =
 	if extrapolate:
 
 		space = np.linspace(minval, maxval, 1000)
-		mean, std = lognorm_fit_constrained(bg, upper = upper, lower = lower)
+		mean, std = lognorm_fit_constrained_print(bg, upper = upper, lower = lower, verbose = verbose)
 		cumulative = pdf_to_cdf_arbitrary(norm.pdf(space, mean, std))
 		#only extrapolate fars above the max BG value
 		#slight change: we go with fars above the 10th highest BG value
@@ -273,7 +359,8 @@ def get_O3_week(week):
     end = start + 60*60*24*7
     return start, end
 
-def get_inj_data(week, noise_dir, background_stats, injection_file, mdc_file, merge_target = 6,
+
+def get_inj_data(week, noise_dir, mdc_file,
                  duration = 1024, start_cutoff = 100, end_cutoff = 1000, f_lower = 30, 
                  pipelines = ["pycbc_hyperbank", "mbta", "gstlal"],
                  ifo_1 = "H1_O3a.txt",
@@ -335,7 +422,18 @@ def get_inj_data(week, noise_dir, background_stats, injection_file, mdc_file, me
     s2_prior = f['injections/spin2x_spin2y_spin2z_sampling_pdf'][:]
 
 
-    start, end = get_O3_week(week)
+    if type(week) == int:
+        start, end = get_O3_week(week)
+    elif type(week) == tuple:
+        start, _ = get_O3_week(week[0])
+        _, end = get_O3_week(week[1])
+    
+    if type(noise_dir) == list: 
+        print("Inj run specified as a tuple of GPS times. Make sure they're contiguous.")
+        start = noise_dir[0][0]
+        end = noise_dir[-1][1]
+
+
     try:
         ifo_1 = impresources.files(segments).joinpath(ifo_1)
         ifo_2 = impresources.files(segments).joinpath(ifo_2)
@@ -372,29 +470,13 @@ def get_inj_data(week, noise_dir, background_stats, injection_file, mdc_file, me
 
     #have to adjust N_draw to account for the fact that we're only using a fraction of the data
     N_draw = int(np.sum(mask)/accepted_fraction)
-
-    valid_times, paths, file_list = get_valid_noise_times(noise_dir,duration, end_cutoff-start_cutoff)
+    if type(noise_dir) == list:
+        print("New noise segment list fetched.")
+        valid_times = get_valid_noise_times_from_segments(noise_dir, duration, end_cutoff-start_cutoff)
+    else:
+        valid_times, paths, file_list = get_valid_noise_times(noise_dir,duration, end_cutoff-start_cutoff)
 
     zls, inj_ids, GPS_rec = get_injection_zerolags(valid_times, start_cutoff, end_cutoff, startgps[mask], gps_times[mask])
-
-    #print("some zls:",zls[:10])
-    #print(inj_ids[:10])
-    
-    if type(background_stats) == str:
-        stm = np.load(background_stats)
-        stm = stm.reshape(-1,11)
-        stmnew = stm[stm[:,0] != -1]
-
-    else:
-        print("using pre-loaded background")
-        stmnew = background_stats
-
-    injs = np.load(injection_file, allow_pickle=True)
-    injs = injs.squeeze()
-    injs = injs[zls]
-
-    nn_preds = np.full(mask.sum(), -1000.0)
-    nn_preds[inj_ids] = injs[:,merge_target]
 
     m1 = m1[mask]
     m2 = m2[mask]
@@ -479,11 +561,11 @@ def get_inj_data(week, noise_dir, background_stats, injection_file, mdc_file, me
         "N_draw": N_draw,
         "mask": mask,
         "pipelines": pipelines,
-        "zerolags": zls
+        "zerolags": zls,
+        "inj_ids": inj_ids
     }
 
-    return N_draw, mask, stmnew, nn_preds, injs, d
-
+    return N_draw, mask, d
 
 def load_ifar_data(inj_file, bg_stats, merge_target, mdc_file, 
         has_injections = False, noise_dir = None, week = None, extrapolate = False):

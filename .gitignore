@@ -12,6 +12,7 @@ infernus/serving/*/*
 **.json
 **.pbtxt
 runs/*
+dev/*
 
 !./share/**
 !share/*.json

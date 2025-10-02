@@ -1,3 +1,5 @@
+"""utilities for noise handling in Infernus."""
+
 import numpy as np
 
 
@@ -21,3 +23,21 @@ def noise_generator(valid_times, paths, file_list, duration, sample_rate):
 				end_idx = int(start_idx + duration * sample_rate)
 				#print(start_idx, end_idx)
 				yield np.copy(noise[:,start_idx:end_idx])
+
+def noise_fetcher(index, valid_times, paths, file_list, duration, sample_rate):
+	file_idx = 0
+	
+	for i in range(len(paths)):
+
+		if valid_times[index] >= int(paths[i][1]) and valid_times[index] + duration <= int(paths[i][1]) + int(paths[i][2]):
+			noise = np.load(file_list[i], mmap_mode='r')
+			file_idx = i
+			break
+		else:
+			pass
+			#print("loading new file")
+	
+	
+	start_idx = int((valid_times[index] - int(paths[file_idx][1])) * sample_rate)
+	end_idx = int(start_idx + duration * sample_rate)
+	return np.copy(noise[:,start_idx:end_idx])
