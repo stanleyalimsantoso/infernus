@@ -138,8 +138,85 @@ def get_V(m1, m2, s1x, s1y, s1z, s2x, s2y, s2z, z,
 
     return np.exp(log_V), np.exp(log_sig), N_eff
 
+import scipy.stats as stats
+
+def logprob_mass2_lognorm(m2, m1, params):
+    ''' evaluate p(m2 | m1) = c * lognormal(m2 | m, sigma) 
+    where 
+    - lognormal is log-normal distribution that is truncated at m1
+    - c is the normalization correction factor    
+    '''
+    m2_mean = params['m2_mean']
+    sig_lognorm = params['sig_lognorm_m2']
+    
+    logc = -stats.lognorm.logcdf(m1, sig_lognorm, scale=m2_mean)
+    return np.where(
+        m2 <  m1, stats.lognorm.logpdf(m2, sig_lognorm, scale=m2_mean) + logc, np.NINF)
+
+def logprob_mass_lognorm(m1, m2, params):
+    ''' evaluate p(m1, m2) = p(m1) p(m2 | m1)
+    with 
+    - p(m1) = log_normal(m1; m, 0.1)
+    - p(m2 | m1) = log_normal(m2; m, 0.1) truncated such that m2 < m1    
+    '''
+    
+    sig_lognorm = params['sig_lognorm_m1']
+    m1_mean = params['m1_mean']
+    
+    log_pm1 = stats.lognorm.logpdf(m1, sig_lognorm, scale=m1_mean)
+    log_pm2 = logprob_mass2_lognorm(m2, m1, params)
+    if params['m1_full_pop'] and params['m2_full_pop']:
+        #return 0
+        #TODO: Confirm this is correct!!!
+        return np.log(params['m1_m2_prior'])
+    elif params['m2_full_pop']:
+        return log_pm1
+    else:
+        return log_pm1 + log_pm2
+
+def logprob_spin(sx, sy, sz, params):
+    ''' Evaluate p(sx, sy, sz) = (1. / |s|^2) p(|s|, cos theta, phi) = 1. / (4 pi s_max |s|^2)
+    where:
+    - |s| = sqrt(sx^2 + sy^2 + sz^2)
+    
+    The mass `m` determines which s_max to use
+    '''
+    smax = params['smax']    
+    s2 = sx**2 + sy**2 + sz**2 
+    return np.where(s2 < smax**2, - np.log(4 * np.pi) - np.log(smax) - np.log(s2), np.NINF)
 
 
+def get_dsens(z, p_draw, N_draw, pipelines, pipeline_fars, m1, m2, s1x, s1y, s1z, s2x, s2y, s2z, pop_params=None):
+	fars = np.geomspace(1e-3, 1e-12, 50)
+
+	#log_s1_s2 = np.log(s1_prior) + np.log(s2_prior)
+	dVdz = log_dVdz(z)
+	#print("pop params:", pop_params)
+	VT = {}
+	sigma_VT = {}
+	for pipeline in pipelines:
+		VT[pipeline] = []
+		sigma_VT[pipeline] = []
+		for far in fars:
+			if pipeline == "any":
+				#make an "or" selection for all pipelines
+				selection = np.zeros(len(pipeline_fars['gstlal']), dtype=bool)
+				for p in pipeline_fars.keys():
+					selection = selection | (pipeline_fars[p] < far)
+			elif pipeline == "any (no NN)":
+				selection = ((pipeline_fars['gstlal'] < far) |
+					(pipeline_fars['pycbc_hyperbank'] < far) | (pipeline_fars['mbta'] < far))
+			else:
+				selection = pipeline_fars[pipeline] < far
+			
+			log_vt, log_sigma_vt, N_eff = get_V(m1, m2, s1x, s1y, s1z, s2x, s2y, s2z, z, logprob_mass_lognorm, logprob_spin, 
+				selection=selection, N_draw=N_draw, p_draw=p_draw, params=pop_params, log_dVdz=dVdz)
+
+			VT[pipeline].append(log_vt)
+			sigma_VT[pipeline].append(log_sigma_vt)
+
+
+	return VT, sigma_VT
 
 
 def get_injection_zerolags( valid_times, start_cutoff, end_cutoff, startgps, endgps):

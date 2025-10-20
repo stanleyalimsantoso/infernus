@@ -149,6 +149,19 @@ save_dir = json_args["save_dir"]
 num_time_slides = json_args["n_timeslides"]
 num_triggers = json_args["num_triggers"]
 batch_size = json_args["batch_size"]
+if "bin" in json_args:
+	bin = json_args["bin"]
+	new_style = True
+	print("Using new style of model directory")
+else:
+	new_style = False
+
+if args.injindex >= 0:
+	inj_index = args.injindex
+	print("Using injection file index", inj_index)
+	print("Need to modify the save directory to include the index")
+	save_dir = os.path.join(save_dir, "inj_" + str(inj_index))
+	print("New save directory is ", save_dir)
 
 cpus = int(os.environ["SLURM_CPUS_PER_TASK"])
 print("running on {} cpus".format(cpus))
@@ -212,12 +225,6 @@ def initialise_server(
 if streamline:
 	myfolder = save_dir
 else:
-	#if os.environ.get("SLURM_JOB_NAME") == "nsbh_my_bank_triweek_inj_triton": 
-	#	print(os.environ.get("SLURM_JOB_NAME"))
-	#	print("looks good")
-	#	print("TODO REVERT THIS LINE AFTER RETRY INJ RUN")
-	#	myfolder = save_dir
-	#else:
 	myfolder = os.environ["JOBFS"]
 
 
@@ -264,7 +271,16 @@ response_idx = 8
 print("SNR dtype is ", SNR.dtype)
 
 #the models are stored one directory down from the save directory
-modeldir = os.path.join(os.path.dirname(save_dir), "model_repositories", "repo_1")
+if os.path.exists(os.path.join(os.path.dirname(save_dir), "model_repositories", "repo_1")):
+	modeldir = os.path.join(os.path.dirname(save_dir), "model_repositories", "repo_1")
+else:
+	print("new style of model dir")
+	#get the name of the parent directory
+	# pardir = save_dir.split("/")[-1]
+	# modeldir = os.path.dirname(os.path.dirname(save_dir))
+	# modeldir = os.path.join(modeldir, "models", pardir , "model_repositories", "repo_1")
+	modeldir = os.path.join(json_args["jobdir"], "models", bin , "model_repositories", "repo_1")
+	print("modeldir is ", modeldir)
 
 sess = None
 def run_session(args):

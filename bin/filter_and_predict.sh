@@ -20,8 +20,9 @@ tasks=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)
 ret=$(python3 ${INFERNUS_DIR}/bin/count_segments.py --jsonfile=$jsonfile)
 array=$(echo $ret | awk '{print $NF}')
 
+#array=100
 echo "array: $array"
-#array=10
+
 
 savedir=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['save_dir'])")
 
@@ -59,8 +60,8 @@ injfile=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdi
 #'after' is start after all the specified jobs have started (or all jobs in array have started)
 #--dependency=after:$dep,aftercorr:$dep
 
-n_gpus=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['n_gpus'])")
-echo n_gpus: $n_gpus
+# n_gpus=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['n_gpus'])")
+# echo n_gpus: $n_gpus
 
 num_triggers=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['num_triggers'])")
 
@@ -107,7 +108,7 @@ split=$(( $array / 2))
 
 
 echo "split: $split"
-inference_mem_size=$(( ${temp_size} * 3 ))
+inference_mem_size=$(( ${temp_size} * 2 ))
 
 #run inj jobs with a small amount of niceness to ensure BG jobs get priority.
 if [ "$injfile" == "None" ]; then
@@ -122,7 +123,6 @@ if [ "$injfile" == "None" ]; then
 		#main=$(ssh farnarkle2 "sbatch -J $triton_name --mem=$((mem))G --array=0-$((array - 1)) --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --parsable ${INFERNUS_DIR}/bin/SNR_submit.sh $jsonfile $total_jobs")
 		main=$(ssh farnarkle2 "sbatch -J $triton_name --mem=$((mem))G --array=0-$((array - 1)) --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --output=$savedir/../logs/%x_%a.log --parsable ${INFERNUS_DIR}/bin/SNR_submit.sh $jsonfile $total_jobs")
 		#--dependency=aftercorr:$main
-		inference_mem_size=$(( ${temp_size} * 3 ))
 		TRITON=$(ssh farnarkle2 "sbatch -J $server_name --array=0-$((array - 1)) --gres=gpu:${gpus_per_server} --dependency=aftercorr:$main --mem=${inference_mem_size}GB --output=$savedir/../logs/%x_%a.log --parsable ${INFERNUS_DIR}/bin/start_triton.sh $jsonfile")
 		main=$TRITON
 	else
@@ -130,7 +130,6 @@ if [ "$injfile" == "None" ]; then
 		#echo "submitted BG job"
 
 		#split=$(($array / 2))
-		inference_mem_size=$(( ${temp_size} * 3 ))
 		main1=$(ssh farnarkle2 "sbatch -J $triton_name --mem=$((mem))G --array=0-$((split - 1)) --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --output=$savedir/../logs/%x_%a.log --parsable ${INFERNUS_DIR}/bin/SNR_submit.sh $jsonfile $total_jobs")
 		main2=$(sbatch -J $triton_name --mem=$((mem))G --array=$((split))-$((array - 1)) --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --output=$savedir/../logs/%x_%a.log --parsable ${INFERNUS_DIR}/bin/SNR_submit.sh $jsonfile $total_jobs)
 		
@@ -148,7 +147,7 @@ else
 	else
 		#new plan: split the array in half. half goes to ozstar, half to NT
 		
-		#split=$((array / 4))
+		#split=$((array / 3))
 
 		main1=$(ssh farnarkle2 "sbatch -J $triton_name --mem=$((mem))G --array=0-$((split - 1)) --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --nice --output=$savedir/../logs/%x_%a.log --parsable ${INFERNUS_DIR}/bin/SNR_submit.sh $jsonfile $total_jobs")
 		main2=$(sbatch -J $triton_name --mem=$((mem))G --array=$((split))-$((array - 1)) --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --parsable --output=$savedir/../logs/%x_%a.log --nice ${INFERNUS_DIR}/bin/SNR_submit.sh $jsonfile $total_jobs)

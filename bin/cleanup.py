@@ -6,7 +6,10 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--jsonfile', type=str, default=None)
-argsfile = parser.parse_args().jsonfile
+parser.add_argument('--injindex', type = int, default = -1)
+args = parser.parse_args()
+argsfile = args.jsonfile
+injindex = args.injindex
 
 args = json.load(open(argsfile, "r"))
 noise_dir = args["noise_dir"]
@@ -14,6 +17,11 @@ maxnoisesegs = args["max_noise_segments"]
 duration = args["duration"]
 savedir = args["save_dir"]
 injfile = args["injfile"]
+# if injindex >= 0:
+# 	print("Using injection file index", injindex)
+# 	print("Need to modify the save directory to include the index")
+# 	savedir = os.path.join(savedir, "inj_" + str(injindex))
+# 	print("New save directory is ", savedir)
 
 if injfile == "None":
 	fail_tolerant = True
@@ -33,14 +41,32 @@ else:
 
 print(len(valid_times), "files to merge")
 
+if isinstance(noise_dir, list):
+	print("Using multiple injfiles, cleaning all segments together")
+	loops = len(injfile)
+else:
+	loops = 1
+
+#possible scenarios: some injfile runs are fine, one or more isn't.
+#no injfile run is fine
+#all injfile runs are fine
 
 missing_segments = []
-for i in range(1, len(valid_times)):
-	#check if ALL files are present
-	if os.path.exists(os.path.join(savedir, "timeslides_{}.npy".format(i))) == False:
-		print("Missing segment", i)
-		if fail_tolerant == False:
-			missing_segments.append(i)
+for loop in range(loops):
+	for i in range(1, len(valid_times)):
+		#check if ALL files are present
+		if injfile is not None:
+			this_savedir = os.path.join(savedir, f"inj_{loop}")
+		else:
+			this_savedir = savedir
+		if os.path.exists(os.path.join(this_savedir, "timeslides_{}.npy".format(i))) == False:
+			print("Missing segment", i)
+			if fail_tolerant == False:
+				missing_segments.append(i)
+
+#sort and remove duplicates
+missing_segments = sorted(list(set(missing_segments)))
+print("Total missing files: ", len(missing_segments))
 
 if len(missing_segments) > 0:
 
@@ -66,22 +92,30 @@ if len(missing_segments) > 0:
 		missing_ranges.append(f"{start}-{end+1}")
 
 	missing='"'+','.join(missing_ranges)+'"'
-	print("bash /fred/oz016/alistair/infernus/dev/streamline_recovery.sh {} {}".format(argsfile, missing))
+	print("bash ${{INFERNUS_DIR}}/bin/recovery.sh {} {}".format(argsfile, missing))
 	print("missing files in bash format:", missing)
 	print("Exiting")
 	exit(1)
 
-timeslides = np.load(os.path.join(savedir, "timeslides_0.npy"))
+#if we got here, all files are present, we can merge
 
-for i in range(1, len(valid_times)):
-	try:
-		ts_load = np.load(os.path.join(savedir, "timeslides_{}.npy".format(i)))
-		timeslides = np.concatenate((timeslides, ts_load), axis = 1)
-		#remove the file
-		os.remove(os.path.join(savedir, "timeslides_{}.npy".format(i)))
-	except:
-		print("Failed to merge segment",i)
+for loop in range(loops):
+	if injfile is not None:
+		this_savedir = os.path.join(savedir, f"inj_{loop}")
+	else:
+		this_savedir = savedir
+	print("Merging segments in", this_savedir)
+	timeslides = np.load(os.path.join(this_savedir, "timeslides_0.npy"))
 
-np.save(os.path.join(savedir, "timeslides.npy"), timeslides)
-print("Merged all segments")
-os.remove(os.path.join(savedir, "timeslides_0.npy"))
+	for i in range(1, len(valid_times)):
+		try:
+			ts_load = np.load(os.path.join(this_savedir, "timeslides_{}.npy".format(i)))
+			timeslides = np.concatenate((timeslides, ts_load), axis = 1)
+			#remove the file
+			os.remove(os.path.join(this_savedir, "timeslides_{}.npy".format(i)))
+		except:
+			print("Failed to merge segment",i)
+
+	np.save(os.path.join(this_savedir, "timeslides.npy"), timeslides)
+	print("Merged all segments")
+	os.remove(os.path.join(this_savedir, "timeslides_0.npy"))

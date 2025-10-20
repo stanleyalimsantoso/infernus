@@ -45,6 +45,7 @@ parser.add_argument('--totaljobs', type=int, default=1)
 parser.add_argument('--ngpus', type=int, default=1)
 parser.add_argument('--argsfile', type=str, default=None)
 parser.add_argument('--streamline', type = int, default = None)
+parser.add_argument('--injindex', type = int, default = -1)
 
 args = parser.parse_args()
 
@@ -64,6 +65,11 @@ if args.streamline == 1:
 	streamline = True
 else:
 	streamline = False
+
+inj_index = None
+if args.injindex >= 0:
+	inj_index = args.injindex
+	print("Using injection file index", inj_index)
 
 #print(gpu_node)
 
@@ -119,15 +125,23 @@ if "template_mass2_min" in args:
 	cut = cut & (templates[:,2] > args["template_mass2_min"])
 if "template_mass2_max" in args:
 	cut = cut & (templates[:,2] < args["template_mass2_max"])
+if "template_chirp_mass_min" in args:
+	#note there might or might not be a cut on component mass
+	print("cutting templates by chirp mass")
+	print("note: this overrides component mass cuts if they exist")
+	cut = (templates[:,0] > args["template_chirp_mass_min"])
+if "template_chirp_mass_max" in args:
+	cut = cut & (templates[:,0] < args["template_chirp_mass_max"])
 if cut is not None:
 	templates = templates[cut]
 
 print("number of templates after cut:", len(templates))
-	
+
 
 #injfile should have one of the following formats:
 #None: perform a background run, with timeslides equal to num_time_slides
 #a path to an HDF file: perform an injection run using the injections in the file
+#A list of paths to HDF files: perform multiple injection runs, one for each file.
 #real: perform a search for a specific event, using real event data
 #noninj: perform a search over the specified time period 
 
@@ -173,6 +187,8 @@ else:
 	if injfile == "noninj":
 		print("noninj/search")
 	else:
+		if inj_index is not None:
+			injfile = injfile[inj_index]
 		print("injecting events from file", injfile)
 
 if isinstance(noise_dir, list) or injfile == "real":
@@ -562,6 +578,8 @@ n_templates = templates_per_batch
 #if injfile == 'real':
 #	print("temp shortening job.")
 #	templates = templates[:templates_per_batch * n_workers * 20]
+# templates = templates[:templates_per_batch * n_workers * 10]
+# print('temp shortening job')
 
 loop = int(np.ceil(len(templates)/templates_per_batch))
 template_banks = []
@@ -608,14 +626,6 @@ else:
 				noise = get_data_from_OzStar(valid_times[segment], duration, ifos[i])
 			else:
 				noise = np.vstack((noise, get_data_from_OzStar(valid_times[segment], duration, ifos[i])))
-
-# def maximum_f_lower(m1,m2):
-#     #https://arxiv.org/pdf/0706.4437
-#     #based on the observation that tau0/tau3 must be at least ~1.7
-
-#     #mtsun is in seconds
-#     mtsun = 4.92695275718945e-06
-#     return 5/(32* np.pi**2 * (m1+m2) * mtsun) / 1.7
 
 #if necessary, insert injections
 if injfile is not None and injfile != "noninj" and injfile != "real":
@@ -826,9 +836,6 @@ def calc_batch(i):
 	#do some garbage collection
 	gc.collect()
 
-
-import multiprocessing as mp
-
 if __name__ == '__main__':
 	with mp.Pool(n_workers) as pool:
 		#chunk size of 1 is fine as each batch takes several seconds.
@@ -881,18 +888,20 @@ print("criterion time", criterion_time.value)
 print("merge time", merge_time.value)
 
 
-if segment == 0 and injfile is None:
-	#save a copy of the timeslides and SNR array to the save directory
-	print("saving timeslides and SNR array to", save_dir)
-	np.save("/fred/oz016/alistair/infernus/SNR_array_{}.npy".format(segment), SNR_array)
-	np.save("/fred/oz016/alistair/infernus/timeslides_{}.npy".format(segment), timeslides)
-elif segment == 0 and injfile is not None:
-	print("saving inj timeslides and SNR array to", save_dir)
-	np.save("/fred/oz016/alistair/infernus/SNR_array_inj_{}.npy".format(segment), SNR_array)
-	np.save("/fred/oz016/alistair/infernus/timeslides_inj_{}.npy".format(segment), timeslides)
+# if segment == 0 and injfile is None:
+# 	#save a copy of the timeslides and SNR array to the save directory
+# 	print("saving timeslides and SNR array to", save_dir)
+# 	np.save("/fred/oz016/alistair/infernus/SNR_array_{}.npy".format(segment), SNR_array)
+# 	np.save("/fred/oz016/alistair/infernus/timeslides_{}.npy".format(segment), timeslides)
+# elif segment == 0 and injfile is not None:
+# 	print("saving inj timeslides and SNR array to", save_dir)
+# 	np.save("/fred/oz016/alistair/infernus/SNR_array_inj_{}.npy".format(segment), SNR_array)
+# 	np.save("/fred/oz016/alistair/infernus/timeslides_inj_{}.npy".format(segment), timeslides)
 
 if injfile == "real":
 	print("saving correct path to", myfolder + "/real_event.txt")
-	save_dir = os.path.join(os.path.dirname(save_dir), event)
+	#NOTE: changed with new style of workflow
+	#save_dir = os.path.join(os.path.dirname(save_dir), event)
+	save_dir = os.path.join(save_dir, event)
 	with open(myfolder + "/real_event.txt", 'w') as f:
 		f.write(save_dir)

@@ -1,5 +1,5 @@
 #! /bin/bash
-#SBATCH --time=2:00:00
+#SBATCH --time=4:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=40G
 #SBATCH --mail-type=BEGIN
@@ -29,13 +29,17 @@ echo "activated venv"
 
 savedir=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['save_dir'])")
 
-modeldir=${savedir}/../model_repositories/repo_1
+#if there is a bin field in the json file, use that to determine the modeldir
+#modeldir=${savedir}/../model_repositories/repo_1
+modeldir=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['jobdir'])")
+bin=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['bin'])")
+modeldir=${modeldir}/models/${bin}/model_repositories/repo_1
 
 triton_server=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['triton_server'])")
 echo Triton server location:
 echo $triton_server
 
-echo $modeldir
+echo "Modeldir is $modeldir "
 #gpus_per_server=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['gpus_per_server'])")
 
 echo $CUDA_VISIBLE_DEVICES
@@ -56,7 +60,7 @@ echo found sockets
 echo $port
 #--output=$savedir/../logs/%x_%a.log
 
-bash ${INFERNUS_DIR}/infernus/serving/run_tritonserver_array.sh $port $savedir $triton_server >> $savedir/../logs/${SLURM_JOB_NAME}_${i}.log 2>&1 &
+bash ${INFERNUS_DIR}/infernus/serving/run_tritonserver_array.sh $port $modeldir $triton_server >> $savedir/../logs/${SLURM_JOB_NAME}_${i}.log 2>&1 &
 #bash ${INFERNUS_DIR}/infernus/serving/run_tritonserver_array.sh $port $savedir $triton_server >> ${INFERNUS_DIR}/triton_logs/${SLURM_JOB_NAME}_${i}.log 2>&1 &
 
 echo "started server"
