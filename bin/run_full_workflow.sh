@@ -184,7 +184,7 @@ echo "Injection job ID: $inj_id"
 
 
 #real event job
-ret=$(python3 ${INFERNUS_DIR}/dev/real_events_prep.py --configfile=${real_event_args})
+ret=$(python3 ${INFERNUS_DIR}/bin/real_events_prep.py --configfile=${real_event_args})
 array=$(echo $ret | awk '{print $NF}')
 
 echo "array: $array"
