@@ -22,7 +22,7 @@ from functools import partial
 from queue import Queue
 import concurrent.futures
 callback_q = Queue()
-
+import gc
 import sys
 #sys.path.append("/fred/oz016/alistair/infernus/dev")
 from infernus.jobmem import jobmem
@@ -104,7 +104,7 @@ parser.add_argument('--totalworkers', type=int, default=1)
 parser.add_argument('--totaljobs', type=int, default=1)
 parser.add_argument('--ngpus', type=int, default=1)
 parser.add_argument('--argsfile', type=str, default=None)
-
+parser.add_argument('--injindex', type = int, default = -1)
 parser.add_argument('--gpunode', type=str, default=None)
 parser.add_argument('--port', type = int, default=None) #note this is the GRPC port, not the HTTP port.
 
@@ -352,11 +352,11 @@ if gpu_ready:
 			time.sleep(5)
 
 #CPU inference variables
-flush_count = 30
+flush_count = 50
 future_list = []
 inference_count = 0
-current_cpus = int(cpus//2)
-
+current_cpus = cpus #int(cpus//2)
+executor = None
 if injfile == 'real':
 	unaveraged_response_array = np.zeros((timeslides.shape[0], timeslides.shape[1], timeslides.shape[2], inference_rate))
 
@@ -374,6 +374,9 @@ for n in range(num_models):
 	
 	else:
 		#running on CPU while we wait for the GPU
+		# if executor is not None:
+		# 	executor.shutdown(wait=False, cancel_futures=True)
+		# 	print("shut down old executor")
 		executor = concurrent.futures.ProcessPoolExecutor(max_workers=current_cpus)
 		model = os.path.join(modeldir, "model_full_" + str(n), "1", "model.onnx")
 		sess_opt = ort.SessionOptions()
@@ -467,7 +470,37 @@ for n in range(num_models):
 			
 		if len(future_list) >= flush_count:
 			print("flushing requests")
-			concurrent.futures.wait(future_list)
+			futures_done, not_done = concurrent.futures.wait(future_list, timeout=300)
+			#print("new test")
+			if len(not_done) > 0:
+				print("some requests did not complete in 300s! restarting this model")
+				#need to restart the model
+				future_list = []
+				#kill the executor and start again
+				print("killing executor and starting again")
+				#NOTE: this functionality is available in Python 3.14+, so this can be cleanly implemented then.
+				print("list of child pids:")
+				print(executor._processes.keys())
+				for proc in executor._processes.values():
+					try:
+						if not proc.is_alive():
+							continue
+					except Exception as e:
+						continue
+					try:
+						proc.kill()
+					except Exception as e:
+						print("failed to kill process, it may have already exited")
+						continue
+				print("killed all child processes")
+				executor.shutdown(wait=False, cancel_futures=True)
+				executor = concurrent.futures.ProcessPoolExecutor(max_workers=current_cpus)
+				#also reset the counters
+				ts_counter, second_counter, window_counter, trigger_counter = 0, 0, 0, 0
+				sess = ort.InferenceSession(model, sess_opt, providers=['CPUExecutionProvider'])
+				print("finished resetting the model")
+				continue
+
 			for future in future_list:
 				response_list.append(future.result())
 			future_list = []
@@ -518,6 +551,7 @@ for n in range(num_models):
 		response_list.append(response)
 		count -= 1
 
+	print("waiting for remaining requests to complete")
 	concurrent.futures.wait(future_list)
 	for future in future_list:
 		response_list.append(future.result())
@@ -569,6 +603,7 @@ for n in range(num_models):
 	response_idx += 1
 	print("response index is now ", response_idx)
 	print("Inference time: ", triton_time)
+	gc.collect()
 
 #once we exit the loop, we're finished with the GPU
 
@@ -594,3 +629,14 @@ else:
 	np.save(save_dir + "/timeslides_{}.npy".format(job_id), timeslides)
 
 print("finished serving job!")
+if executor is not None:
+	executor.shutdown(wait=False, cancel_futures=True)
+	#kill all child processes
+
+	print("shut down executor")
+#os._exit(os.EX_OK)
+print("Python exiting")
+gc.collect()
+# PID = os.getpid()
+# os.kill(PID, 9)
+sys.exit(0)
