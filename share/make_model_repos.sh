@@ -16,15 +16,20 @@ savedir=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdi
 
 #get tensorflow model file path from json file
 
-tf_model=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['tf_model'])")
+#tf_model=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['tf_model'])")
 
-echo $tf_model
+#echo $tf_model
 #get batch file from json file
 
 batch_size=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['batch_size'])")
 
+#metamodel_dir=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['metamodel_dir'])")
+jobdir=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['jobdir'])")
+
+n_models=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['final_model_candidates'])")
+
 mkdir -p $savedir/model_repositories/repo_1
-mkdir -p $savedir/model_repositories/repo_2
+#mkdir -p $savedir/model_repositories/repo_2
 
 cp $jsonfile $savedir
 
@@ -36,28 +41,26 @@ new_tf_model='tf_test'
 new_tf_model=$(pwd)/$new_tf_model
 echo $new_tf_model
 
-echo "loading and splitting tensorflow model"
-python ${infernus_dir}/infernus/serving/convert_model/save_tf_model.py $tf_model $new_tf_model
+for i in $(seq 0 $(($n_models-1)));
+do
 
-#convert models to onnx
-python -m tf2onnx.convert --saved-model ${new_tf_model}_h --output temp_h.onnx
-python -m tf2onnx.convert --saved-model ${new_tf_model}_l --output temp_l.onnx
-python -m tf2onnx.convert --saved-model ${new_tf_model}_hl --output temp_hl.onnx
+	echo "loading and splitting tensorflow model"
+	#python ${infernus_dir}/infernus/serving/convert_model/save_tf_model_2.py $new_tf_model $jobdir $metamodel_dir $i
+	python ${infernus_dir}/infernus/serving/convert_model/save_tf_model.py $new_tf_model $savedir $i
+	echo "finished saving tensorflow models"
+	#convert models to onnx
+	python -m tf2onnx.convert --saved-model ${new_tf_model}_full --output temp_full.onnx
 
-mkdir -p repo_1/model_h/1
-mkdir -p repo_1/model_hl/1
-mkdir -p repo_2/model_l/1
+	mkdir -p repo_1/model_full_${i}/1
 
-#modify onnx models
-#sleep 5
+	#modify onnx models
+	#sleep 5
 
-python ${infernus_dir}/infernus/serving/convert_model/onnx_modify.py temp_h.onnx $batch_size repo_1/model_h/
+	python ${infernus_dir}/infernus/serving/convert_model/onnx_modify.py temp_full.onnx $batch_size repo_1/model_full_${i} ${i}
 
-#sleep 2
-python ${infernus_dir}/infernus/serving/convert_model/onnx_modify.py temp_hl.onnx $batch_size repo_1/model_hl/
-#sleep 2
-python ${infernus_dir}/infernus/serving/convert_model/onnx_modify.py temp_l.onnx $batch_size repo_2/model_l/
+	rm temp_*.onnx
+	rm -r tf_test_*
 
-rm temp_*.onnx
-rm -r tf_test_*
+done
+echo "done"
 
