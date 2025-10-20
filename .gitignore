@@ -9,6 +9,7 @@ infernus/serving/*/*
 **.npy
 
 /*.sh 
+!install.sh
 **.json
 **.pbtxt
 runs/*
