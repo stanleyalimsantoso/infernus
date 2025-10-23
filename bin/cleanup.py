@@ -41,11 +41,13 @@ else:
 
 print(len(valid_times), "files to merge")
 
-if isinstance(noise_dir, list):
+if isinstance(injfile, list):
 	print("Using multiple injfiles, cleaning all segments together")
 	loops = len(injfile)
 else:
 	loops = 1
+
+print("Number of directories to merge:", loops)
 
 #possible scenarios: some injfile runs are fine, one or more isn't.
 #no injfile run is fine
@@ -55,7 +57,7 @@ missing_segments = []
 for loop in range(loops):
 	for i in range(1, len(valid_times)):
 		#check if ALL files are present
-		if injfile is not None:
+		if isinstance(injfile, list):
 			this_savedir = os.path.join(savedir, f"inj_{loop}")
 		else:
 			this_savedir = savedir
@@ -100,7 +102,7 @@ if len(missing_segments) > 0:
 #if we got here, all files are present, we can merge
 
 for loop in range(loops):
-	if injfile is not None:
+	if isinstance(injfile, list):
 		this_savedir = os.path.join(savedir, f"inj_{loop}")
 	else:
 		this_savedir = savedir
