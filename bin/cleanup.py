@@ -55,7 +55,7 @@ print("Number of directories to merge:", loops)
 
 missing_segments = []
 for loop in range(loops):
-	for i in range(1, len(valid_times)):
+	for i in range(len(valid_times)):
 		#check if ALL files are present
 		if isinstance(injfile, list):
 			this_savedir = os.path.join(savedir, f"inj_{loop}")
