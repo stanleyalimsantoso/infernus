@@ -26,12 +26,14 @@ if args.configfile.split("/")[-1] == "submit.json":
 	mdc_file = inj_args["injfile"]
 	if isinstance(mdc_file, list):
 		print("List of injection files detected, only using the first one for results summary for now.")
+		inj_file = os.path.join(inj_args['save_dir'], "inj_{}".format(inj_args['bin'][-1]), "timeslides.npy")
 		mdc_file = mdc_file[int(inj_args['bin'][-1])]
+	else:
+		inj_file = os.path.join(inj_args['save_dir'], "timeslides.npy")
 	model_val_dir = os.path.join(inj_args['jobdir'], "results", inj_args['bin'])
 	os.makedirs(model_val_dir, exist_ok = True)
 	print("Model val dir: ", model_val_dir)
 	bg_file = os.path.join(bg_args['save_dir'], "timeslides.npy")
-	inj_file = os.path.join(inj_args['save_dir'], "inj_{}".format(inj_args['bin'][-1]), "timeslides.npy")
 	print("TODO: generalise to multiple injection files!")
 	real_dir_root = os.path.join(inj_args['jobdir'], "real_events", inj_args['bin'])
 	real_dirs = sorted(os.listdir(real_dir_root))
@@ -354,9 +356,6 @@ for d in real_dirs:
 	if d.startswith("GW"):
 		total_events += 1
 		#print(d)
-		#if d.startswith("GW190814"):
-		#	print("Skipping GW190814 for now (TODO IMPLEMENT THE H1 DATA!)")
-		#	continue
 		real_dir = os.path.join(real_dir_root, d)
 		
 		print("Processing event", d)

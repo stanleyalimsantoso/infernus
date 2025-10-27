@@ -120,14 +120,7 @@ fi
 
 #echo $TRITON
 
-cleanup=$(sbatch -J $cleanup_name --mem=$((cleanup_mem))G --dependency=afterany:$main --output=$savedir/../logs/%x.log --parsable /fred/oz016/alistair/infernus/dev/cleanup_job.sh $jsonfile)
-# if [ $array -lt 10 ]; then
-# 	#now submit a cleanup job that requires ALL the jobs in the array to be done
-# 	cleanup=$(sbatch -J $cleanup_name --mem=$((cleanup_mem))G --dependency=afterany:$TRITON --output=$savedir/../logs/%x.log --parsable /fred/oz016/alistair/infernus/dev/cleanup_job.sh $jsonfile)
-# else
-# 	cleanup=$(sbatch -J $cleanup_name --mem=$((cleanup_mem))G --dependency=afterany:$main --output=$savedir/../logs/%x.log --parsable /fred/oz016/alistair/infernus/dev/cleanup_job.sh $jsonfile)
-
-# fi
+cleanup=$(sbatch -J $cleanup_name --mem=$((cleanup_mem))G --dependency=afterany:$main --output=$savedir/../logs/%x.log --parsable /fred/oz016/alistair/infernus/bin/cleanup_job.sh $jsonfile)
 
 echo $cleanup
 
