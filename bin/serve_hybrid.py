@@ -25,8 +25,8 @@ callback_q = Queue()
 import gc
 import sys
 #sys.path.append("/fred/oz016/alistair/infernus/dev")
-from infernus.jobmem import jobmem
-jmem = jobmem()   # do this once
+#from infernus.jobmem import jobmem
+#jmem = jobmem()   # do this once
 
 
 def onnx_callback(
@@ -528,15 +528,15 @@ for n in range(num_models):
 				print("no server found")
 				#Doing some Slurm memory wizardry as we don't necessarily have enough memory
 				#to spin up 1 model per CPU. This way we don't underutilise CPUs if we have enough memory.
-				current_mem = jmem.read() #read the job memory usage
-				print("current mem (bytes): ", current_mem)
-				mem_remaining = (current_mem['limit'] - current_mem['usage'])/(1024**3)
-				print(mem_remaining, "GB under limit")
-				if mem_remaining > 5 + 0.1*current_mem['limit']/(1024**3) and current_cpus < cpus:
-					current_cpus += 1
-					print("re-initialising process pool with more cpus")
-					executor.shutdown(wait=True)
-					executor = concurrent.futures.ProcessPoolExecutor(max_workers=current_cpus)
+				#current_mem = jmem.read() #read the job memory usage
+				#print("current mem (bytes): ", current_mem)
+				#mem_remaining = (current_mem['limit'] - current_mem['usage'])/(1024**3)
+				# print(mem_remaining, "GB under limit")
+				# if mem_remaining > 5 + 0.1*current_mem['limit']/(1024**3) and current_cpus < cpus:
+				# 	current_cpus += 1
+				# 	print("re-initialising process pool with more cpus")
+				# 	executor.shutdown(wait=True)
+				# 	executor = concurrent.futures.ProcessPoolExecutor(max_workers=current_cpus)
 
 
 		sys.stdout.flush()
