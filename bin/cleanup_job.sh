@@ -33,10 +33,11 @@ source $VIRTUAL_ENV/bin/activate
 # fi
 # echo "injfile_index: $injfile_index"
 python ${INFERNUS_DIR}/bin/cleanup.py --jsonfile=$jsonfile #${injfile_index}
-pid=$!
+# pid=$!
 
-wait $pid
+# wait $pid
 status=$?
+echo "Cleanup script exited with status $status"
 if [ $status -ne 0 ]; then
 	echo "Cleanup script failed with status $status"
 	echo "Retaining log files for debug purposes"

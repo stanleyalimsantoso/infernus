@@ -18,15 +18,24 @@ tasks=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)
 
 
 if [ -z "$2" ]; then
-	echo "Number of jobs not given. We will calculate it instead."
-	#use this to find how big to make the job array.
-	ret=$(python3 ${INFERNUS_DIR}/bin/count_segments.py --jsonfile=$jsonfile)
-	array=$(echo $ret | awk '{print $NF}')
-	jobs=0-$(($array - 1))
+	#echo "No jobs specified, only running cleanup and plotting."
+	jobs=""
 else
+	#check if $2 is "all"
+	if [ "$2" == "all" ]; then
+		echo "All specified. Will compute the number of jobs to rerun."
+		#use this to find how big to make the job array.
+		ret=$(python3 ${INFERNUS_DIR}/bin/count_segments.py --jsonfile=$jsonfile)
+		array=$(echo $ret | awk '{print $NF}')
+		jobs=0-$(($array - 1))
 	echo "jobs given as $2"
-	jobs=$2
+	
+	else
+	
+		jobs=$2
+	fi
 fi
+
 #jobs=$2
 
 echo "This is a recovery script to fix jobs that did not complete successfully."
@@ -100,33 +109,39 @@ temp_size=$(( ${num_triggers} * 3 ))
 
 inference_mem_size=$(( ${temp_size} * 3 ))
 
-
-if [ "$injfile" == "None" ]; then
-	#main=$(ssh farnarkle2 "sbatch -J $triton_name --mem=$((mem))G --array=${array} --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --output=$savedir/../logs/%x_%a.log --parsable ${INFERNUS_DIR}/bin/SNR_submit.sh $jsonfile $total_jobs")
-	main=$(sbatch -J $triton_name --mem=$((mem))G --array=${array} --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --output=$savedir/../logs/%x_%a.log --parsable ${INFERNUS_DIR}/bin/SNR_submit.sh $jsonfile $total_jobs)
-	#--dependency=aftercorr:$main
-	inference_mem_size=$(( ${temp_size} * 3 ))
-	TRITON=$(ssh farnarkle2 "sbatch -J $server_name --array=${array} --gres=gpu:${gpus_per_server} --dependency=aftercorr:$main --mem=${inference_mem_size}GB --output=$savedir/../logs/%x_%a.log --parsable ${INFERNUS_DIR}/bin/start_triton.sh $jsonfile")
-	main=$TRITON
-
+if [ -z $array ]; then
+	echo "array not specified, only running cleanup"
+	dep=""
 else
+	if [ "$injfile" == "None" ]; then
+		#main=$(ssh farnarkle2 "sbatch -J $triton_name --mem=$((mem))G --array=${array} --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --output=$savedir/../logs/%x_%a.log --parsable ${INFERNUS_DIR}/bin/SNR_submit.sh $jsonfile $total_jobs")
+		main=$(sbatch -J $triton_name --mem=$((mem))G --array=${array} --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --output=$savedir/../logs/%x_%a.log --parsable ${INFERNUS_DIR}/bin/SNR_submit.sh $jsonfile $total_jobs)
+		#--dependency=aftercorr:$main
+		inference_mem_size=$(( ${temp_size} * 3 ))
+		TRITON=$(ssh farnarkle2 "sbatch -J $server_name --array=${array} --gres=gpu:${gpus_per_server} --dependency=aftercorr:$main --mem=${inference_mem_size}GB --output=$savedir/../logs/%x_%a.log --parsable ${INFERNUS_DIR}/bin/start_triton.sh $jsonfile")
+		main=$TRITON
 
-	#main=$(ssh farnarkle2 "sbatch -J $triton_name --mem=$((mem))G --array=${array} --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --parsable ${INFERNUS_DIR}/bin/SNR_submit.sh $jsonfile $total_jobs")
-	#main=$(ssh farnarkle2 "sbatch -J $triton_name --mem=$((mem))G --array=${array} --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --output=$savedir/../logs/%x_%a.log --parsable ${INFERNUS_DIR}/bin/SNR_submit.sh $jsonfile $total_jobs")
-	main=$(sbatch -J $triton_name --mem=$((mem))G --array=${array} --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --output=$savedir/../logs/%x_%a.log --parsable /fred/oz016/alistair/infernus/bin/SNR_submit.sh $jsonfile $total_jobs)
+	else
+
+		#main=$(ssh farnarkle2 "sbatch -J $triton_name --mem=$((mem))G --array=${array} --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --parsable ${INFERNUS_DIR}/bin/SNR_submit.sh $jsonfile $total_jobs")
+		#main=$(ssh farnarkle2 "sbatch -J $triton_name --mem=$((mem))G --array=${array} --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --output=$savedir/../logs/%x_%a.log --parsable ${INFERNUS_DIR}/bin/SNR_submit.sh $jsonfile $total_jobs")
+		main=$(sbatch -J $triton_name --mem=$((mem))G --array=${array} --cpus-per-task=$((tasks)) --tmp=${temp_size}GB ${triton_prefix} --output=$savedir/../logs/%x_%a.log --parsable /fred/oz016/alistair/infernus/bin/SNR_submit.sh $jsonfile $total_jobs)
+	fi
+	dep="--dependency=afterany:$main"
 fi
-
 
 
 #echo $TRITON
 
-cleanup=$(sbatch -J $cleanup_name --mem=$((cleanup_mem))G --dependency=afterany:$main --output=$savedir/../logs/%x.log --parsable /fred/oz016/alistair/infernus/bin/cleanup_job.sh $jsonfile)
+cleanup=$(sbatch -J $cleanup_name --mem=$((cleanup_mem))G ${dep} --output=$savedir/../logs/%x.log --parsable /fred/oz016/alistair/infernus/bin/cleanup_job.sh $jsonfile)
 
 echo $cleanup
+#need to use the submit script instead of the inj submit script
+submit_file=$(cat $jsonfile | python3 -c "import sys, json; print(json.load(sys.stdin)['submit_script'])")
 
 #we now want to run the plotting code
 plotting=$(sbatch --job-name=${jobname}_plotting --output=$savedir/../logs/%x.log --time=01:00:00 --mem=30G --dependency=afterok:${cleanup} \
-	--parsable --wrap "python ${INFERNUS_DIR}/bin/results_summary.py --configfile=${jsonfile}")
+	--parsable --wrap "python ${INFERNUS_DIR}/bin/results_summary.py --configfile=${submit_file}")
 
 echo "Plotting job ID: $plotting"
 #to find the number of idle CPUs on skylake
