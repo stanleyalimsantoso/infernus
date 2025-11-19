@@ -3,13 +3,13 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=40G
 #SBATCH --mail-type=BEGIN
+#SBATCH --account=oz016
 
 ##SBATCH --cpus-per-gpu=2
 ##SBATCH --ntasks-per-node=1
 
 #--mem=25gb --cpus-per-task=2 --gpus=1
 
-#SBATCH --account=oz016
 
 #echo your node
 echo $SLURM_JOB_NODELIST

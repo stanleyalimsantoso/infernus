@@ -1,6 +1,7 @@
 #! /bin/bash
 #SBATCH --time=30:00:00
 #SBATCH --tmp=60GB
+#SBATCH --account=oz016
 ##SBATCH --nice=100
 
 ##SBATCH --tmp=120GB
@@ -8,7 +9,6 @@
 ##SBATCH --mem=20gb
 ##SBATCH --ntasks=1
 
-#SBATCH --account=oz016
 
 echo "Job account:" $SLURM_JOB_ACCOUNT
 
