@@ -1,4 +1,5 @@
 #! /bin/bash
+#SBATCH --account=oz016
 #Ozstar-specific script to submit an array of jobs to filter data and then predict using a trained model.
 set -e
 

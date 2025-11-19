@@ -9,6 +9,7 @@
 
 #--mem=25gb --cpus-per-task=2 --gpus=1
 
+#SBATCH --account=oz016
 
 #echo your node
 echo $SLURM_JOB_NODELIST

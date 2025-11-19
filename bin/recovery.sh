@@ -1,4 +1,7 @@
 #! /bin/bash
+
+#SBATCH --account=oz016
+
 set -e
 
 jsonfile=$1

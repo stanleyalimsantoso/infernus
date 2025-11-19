@@ -8,6 +8,8 @@
 ##SBATCH --mem=20gb
 ##SBATCH --ntasks=1
 
+#SBATCH --account=oz016
+
 echo "Job account:" $SLURM_JOB_ACCOUNT
 
 jsonfile=$1

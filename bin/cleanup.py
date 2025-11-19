@@ -70,34 +70,59 @@ for loop in range(loops):
 missing_segments = sorted(list(set(missing_segments)))
 print("Total missing files: ", len(missing_segments))
 
-if len(missing_segments) > 0:
+max_array = 2048
+rerun_jobs = sorted(set(i % max_array for i in missing_segments))
 
-	print("Missing segments", missing_segments)
-	print("To rerun, use the following command:")
+if len(rerun_jobs) > 0:
+    
+    missing_ranges = []
+    start = rerun_jobs[0]
+    end = start
+    for i in range(1, len(rerun_jobs)):
+        if rerun_jobs[i] == end + 1
+            end = rerun_jobs[i]
+        else:
+            if start == end:
+                missing_ranges.append(str(start))
+            else:
+                missing_ranges.append(f"{start}-{end}")
+            start = rerun_jobs[i]
+            end = start
+    if start = end:
+        rerun_jobs.append(str(start))
+    else:
+        rerun_jobs.append(f"{start}-{end+1}")
+    missing = '"' + ",".join(missing_ranges) + '"'
+    print("bash ${INFERNUS_DIR}/bin/recovery.sh {} {}".format(argsfile, missing))
 
-	missing_ranges = []
-	start = missing_segments[0]
-	end = start
-	for i in range(1, len(missing_segments)):
-		if missing_segments[i] == end + 1:
-			end = missing_segments[i]
-		else:
-			if start == end:
-				missing_ranges.append(str(start))
-			else:
-				missing_ranges.append(f"{start}-{end}")
-			start = missing_segments[i]
-			end = start
-	if start == end:
-		missing_ranges.append(str(start))
-	else:
-		missing_ranges.append(f"{start}-{end+1}")
+# if len(missing_segments) > 0:
 
-	missing='"'+','.join(missing_ranges)+'"'
-	print("bash ${{INFERNUS_DIR}}/bin/recovery.sh {} {}".format(argsfile, missing))
-	print("missing files in bash format:", missing)
-	print("Exiting")
-	exit(1)
+# 	print("Missing segments", missing_segments)
+# 	print("To rerun, use the following command:")
+
+# 	missing_ranges = []
+# 	start = missing_segments[0]
+# 	end = start
+# 	for i in range(1, len(missing_segments)):
+# 		if missing_segments[i] == end + 1:
+# 			end = missing_segments[i]
+# 		else:
+# 			if start == end:
+# 				missing_ranges.append(str(start))
+# 			else:
+# 				missing_ranges.append(f"{start}-{end}")
+# 			start = missing_segments[i]
+# 			end = start
+# 	if start == end:
+# 		missing_ranges.append(str(start))
+# 	else:
+# 		missing_ranges.append(f"{start}-{end+1}")
+
+# 	missing='"'+','.join(missing_ranges)+'"'
+# 	print("bash ${{INFERNUS_DIR}}/bin/recovery.sh {} {}".format(argsfile, missing))
+# 	print("missing files in bash format:", missing)
+# 	print("Exiting")
+# 	exit(1)
 
 #if we got here, all files are present, we can merge
 
